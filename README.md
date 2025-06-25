@@ -8,7 +8,7 @@
 给予脚本执行权限：
 
 ```bash
-chmod +x wordpress_install.sh
+chmod +x wp_install.sh
 ```
 
 ### 安装 WordPress
@@ -16,7 +16,7 @@ chmod +x wordpress_install.sh
 运行以下命令并按提示操作：
 
 ```bash
-sudo bash wordpress_install.sh install
+sudo bash wp_install.sh install
 ```
 
 脚本将开始交互式地询问您以下信息：
@@ -44,7 +44,7 @@ sudo bash wordpress_install.sh install
 运行以下命令：
 
 ```bash
-sudo bash wordpress_install.sh uninstall
+sudo bash wp_install.sh uninstall
 ```
 
 卸载程序会尝试自动发现 WordPress 实例。它会询问您确认要卸载的网站路径，并提供是否彻底清除 Nginx、MariaDB 和 PHP 软件包的选项。
