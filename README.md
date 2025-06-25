@@ -1,4 +1,4 @@
-# WordPress LEMP 自动化脚本
+# WordPress LEMP 自动化脚本 (适用于 Ubuntu/Debian)
 
 这是一个 Bash 脚本，用于在 Ubuntu/Debian 系统上**自动化安装和卸载 WordPress LEMP (Nginx, MariaDB, PHP) 环境**。它支持灵活的 SSL 配置，包括自动申请 Let's Encrypt 证书。
 
