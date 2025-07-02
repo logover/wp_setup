@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # ==============================================================================
-# 全自动 WordPress LEMP + 灵活 SSL 安装脚本 (Ubuntu/Debian 专用版)
-# Fully Automated WordPress on LEMP + Flexible SSL Installer (Ubuntu/Debian Only)
+# 全自动 WordPress LEMP + 灵活 SSL 安装脚本 (Ubuntu/Debian)
+# Fully Automated WordPress on LEMP + Flexible SSL Installer (Ubuntu/Debian)
 #
 # Author: logover
-# Version: 1.1
+# Version: 1.2
 # Description: 自动检测操作系统 (仅支持 Debian/Ubuntu) 并安装
 #              WordPress LEMP 环境。使用 WP-CLI 跳过网页安装，提供灵活的 SSL
 #              选项和中文安装选项。
@@ -19,6 +19,7 @@ NC='\033[0m' # No Color
 
 # --- 全局变量 / Global Variables ---
 CONFIG_FILE="/etc/wordpress_installer/config.conf"
+SUMMARY_FILE="$HOME/wordpress_installation_summary.txt" # 新增：汇总文件路径
 # OS-specific variables will be set by detect_os_and_set_vars
 PKG_CMD_UPDATE=""
 PKG_CMD_INSTALL=""
@@ -27,6 +28,9 @@ REQUIRED_PACKAGES=""
 WEB_USER=""
 PHP_FPM_SERVICE="" # Will be phpX.Y-fpm
 PHP_FPM_SOCK_PATH="/run/php/php-fpm.sock" # Fixed socket path as requested
+
+# Store user's choice for Chinese language pack here
+INSTALL_CHINESE_WP=""
 
 # --- 功能函数：打印不同颜色的信息 / Function to print messages ---
 info() {
@@ -52,7 +56,7 @@ check_root() {
 # --- 功能函数：确保使用 bash 运行 / Function to ensure script is run with bash ---
 ensure_bash() {
     if [ -z "$BASH_VERSION" ]; then
-        error "此脚本必须使用 bash 运行，但检测到您可能正在使用 sh。请通过 'sudo bash $0' 来运行。\nThis script must be run with bash. Please run it using 'sudo bash $0'."
+        error "此脚本必须使用 bash 运行，但检测到您可能正在使用 sh。请通过 'sudo bash \$0' 来运行。\nThis script must be run with bash. Please run it using 'sudo bash \$0'."
     fi
 }
 
@@ -118,11 +122,24 @@ install_wordpress() {
         [ "$admin_pass" = "$admin_pass_confirm" ] && ! [ -z "$admin_pass" ] && break
         warn "密码不匹配或为空，请重试。/ Passwords do not match or are empty. Please try again."
     done
+
     info "现在，请输入数据库信息。/ Now, please enter the database information."
-    read -p "请输入 WordPress 数据库名称 / Please enter the WordPress database name: " db_name
+    local recommended_db_name="wp_db" # Recommended database name
+    read -p "请输入 WordPress 数据库名称 (推荐: ${recommended_db_name}) / Please enter the WordPress database name (Recommended: ${recommended_db_name}): " db_name
+    if [ -z "$db_name" ]; then
+        db_name="$recommended_db_name" # If user presses enter, use the recommended value
+        info "数据库名称已设置为推荐值: $db_name"
+    fi
     if [ -z "$db_name" ]; then error "数据库名称不能为空。/ Database name cannot be empty."; fi
-    read -p "请输入数据库用户名 / Please enter the database username: " db_user
+
+    local recommended_db_user="wp_user"
+    read -p "请输入数据库用户名 (推荐: ${recommended_db_user}) / Please enter the database username (Recommended: ${recommended_db_user}): " db_user
+    if [ -z "$db_user" ]; then
+        db_user="$recommended_db_user" # If user presses enter, use the recommended value
+        info "数据库用户名已设置为推荐值: $db_user"
+    fi
     if [ -z "$db_user" ]; then error "数据库用户名不能为空。/ Database username cannot be empty."; fi
+
     while true; do
         read -sp "请输入数据库用户的密码 / Please enter a password for the database user: " db_pass
         echo
@@ -131,6 +148,12 @@ install_wordpress() {
         [ "$db_pass" = "$db_pass_confirm" ] && ! [ -z "$db_pass" ] && break
         warn "密码不匹配或为空，请重试。/ Passwords do not match or are empty. Please try again."
     done
+
+    # Chinese language option moved here as requested
+    read -p "是否需要为 WordPress 安装并激活简体中文? (y/N) / Install and activate Chinese (Simplified) for WordPress? (y/N): " INSTALL_CHINESE_WP
+    if [[ "$INSTALL_CHINESE_WP" != "y" && "$INSTALL_CHINESE_WP" != "Y" ]]; then
+        info "已选择跳过中文安装。/ Skipped Chinese language installation."
+    fi
 
     WP_PATH="/var/www/$domain"
 
@@ -240,8 +263,8 @@ MYSQL_SCRIPT
     sudo -u "$WEB_USER" wp core install --path="$WP_PATH" --url="http://$domain" --title="$site_title" --admin_user="$admin_user" --admin_password="$admin_pass" --admin_email="$admin_email" --skip-email
     if [ $? -ne 0 ]; then error "使用 WP-CLI 安装 WordPress 核心失败！/ Failed to install WordPress core using WP-CLI!"; fi
 
-    read -p "是否需要为 WordPress 安装并激活简体中文? (y/N) / Install and activate Chinese (Simplified) for WordPress? (y/N): " install_chinese
-    if [[ "$install_chinese" == "y" || "$install_chinese" == "Y" ]]; then
+    # Apply Chinese language based on earlier user input
+    if [[ "$INSTALL_CHINESE_WP" == "y" || "$INSTALL_CHINESE_WP" == "Y" ]]; then
         info "正在准备语言目录... / Preparing languages directory..."
         sudo -u "$WEB_USER" mkdir -p "$WP_PATH/wp-content/languages"
         info "正在下载并安装简体中文语言包... / Downloading and installing Chinese (Simplified) language pack..."
@@ -253,9 +276,7 @@ MYSQL_SCRIPT
             sudo -u "$WEB_USER" wp site switch-language zh_CN --path="$WP_PATH"
             info "简体中文已激活。/ Chinese (Simplified) has been activated."
         fi
-    else
-        info "已跳过中文安装。/ Skipped Chinese language installation."
-    fi
+    fi # Else, already skipped as per earlier message
 
     info "正在根据系统设置 WordPress 时区... / Setting WordPress timezone from system..."
     SYSTEM_TIMEZONE=$(timedatectl show --property=Timezone --value)
@@ -331,8 +352,58 @@ MYSQL_SCRIPT
             "使用 acme.sh 申请新证书 (ECC)")
                 site_protocol="https"
                 is_ecc=true
-                warn "自动申请证书需要确保您的域名 ($domain) 已正确解析到本服务器IP！"
-                read -p "按回车键继续... / Press Enter to continue..."
+
+                # --- 智能域名 IP 匹配 / Smart Domain IP Matching ---
+                local current_ip=""
+                local domain_ip=""
+
+                # Get server's public IP
+                current_ip=$(curl -s ifconfig.me)
+                if [ -z "$current_ip" ]; then
+                    current_ip=$(curl -s ipinfo.io/ip)
+                fi
+                if [ -z "$current_ip" ]; then
+                    warn "无法获取本服务器的公网 IP。请手动确认域名解析是否正确。"
+                else
+                    info "本服务器的公网 IP 为: $current_ip"
+                fi
+
+                # Get domain's resolved IP
+                if command -v dig &> /dev/null; then
+                    domain_ip=$(dig +short A "$domain")
+                elif command -v nslookup &> /dev/null; then
+                    domain_ip=$(nslookup -query=A "$domain" | grep "Address:" | tail -n1 | awk '{print $NF}')
+                else
+                    warn "未找到 'dig' 或 'nslookup' 命令，无法自动验证域名解析。请手动确认域名解析是否正确。"
+                fi
+
+                if [ -n "$current_ip" ] && [ -n "$domain_ip" ]; then
+                    if [ "$current_ip" = "$domain_ip" ]; then
+                        info "域名 '$domain' 已正确解析到本服务器 IP ($current_ip)。"
+                    else
+                        warn "警告：域名 '$domain' 当前解析到的 IP ($domain_ip) 与本服务器公网 IP ($current_ip) 不匹配！"
+                        warn "这将导致 SSL 证书申请失败。请确保您的域名已正确指向本服务器IP后重试。"
+                        read -p "按回车键继续 (或按 Ctrl+C 退出脚本): "
+                    fi
+                elif [ -z "$current_ip" ] || [ -z "$domain_ip" ]; then
+                    warn "无法自动验证域名解析。请手动确认域名 ($domain) 已正确解析到本服务器IP！"
+                    read -p "按回车键继续 (或按 Ctrl+C 退出脚本): "
+                fi
+                # --- 智能域名 IP 匹配结束 / End Smart Domain IP Matching ---
+
+                # --- 清空 acme.sh 目录内容 / Clear acme.sh directory content ---
+                # 尝试查找并删除所有与当前域名相关的 acme.sh 证书目录
+                # 这将匹配 example.com, example.com_ecc, example.com_rsa 等
+                if [ -d "$ACME_HOME_DIR" ]; then
+                    for acme_cert_dir in "$ACME_HOME_DIR/$domain"* ; do
+                        if [ -d "$acme_cert_dir" ]; then
+                            warn "检测到旧的 acme.sh 域名目录 '$acme_cert_dir'，正在清空其内容..."
+                            rm -rf "${acme_cert_dir:?}"/* # 使用 ${var:?} 防止空变量误删根目录
+                        fi
+                    done
+                fi
+                # --- 清空 acme.sh 目录内容结束 ---
+
                 if [ -z "$ACME_CMD" ]; then
                     info "正在安装 acme.sh... / Installing acme.sh..."
                     curl -s https://get.acme.sh | sh -s email="$ssl_email"
@@ -474,6 +545,8 @@ EOF
     # --- 7. 最终信息汇总 / Final Summary ---
     info "安装全部完成！/ Installation is fully complete!"
     echo
+
+    # Output to console
     echo -e "${GREEN}==================== 安装信息汇总 / Installation Summary ====================${NC}"
     printf "| %-25s | ${YELLOW}%-45s${NC} |\n" "网站地址 (Site URL)" "${site_protocol}://$domain"
     printf "| %-25s | %-45s |\n" "WordPress 管理员 (Admin)" "$admin_user"
@@ -489,6 +562,30 @@ EOF
     printf "| %-25s | ${YELLOW}%-45s${NC} |\n" "安全提醒 (Security Tip)" "sudo mysql_secure_installation"
     echo -e "============================================================================"
     echo
+
+    # Output to file in user's home directory
+    {
+        echo "==================== WordPress 安装信息汇总 / WordPress Installation Summary ===================="
+        printf "%-25s : %s\n" "网站地址 (Site URL)" "${site_protocol}://$domain"
+        printf "%-25s : %s\n" "WordPress 管理员 (Admin)" "$admin_user"
+        printf "%-25s : %s\n" "WordPress 密码 (Password)" "$admin_pass"
+        echo "----------------------------------------------------------------------------------"
+        printf "%-25s : %s\n" "数据库名称 (DB Name)" "$db_name"
+        printf "%-25s : %s\n" "数据库用户 (DB User)" "$db_user"
+        printf "%-25s : %s\n" "数据库密码 (DB Password)" "$db_pass"
+        echo "----------------------------------------------------------------------------------"
+        printf "%-25s : %s\n" "网站根目录 (Web Root)" "$WP_PATH"
+        printf "%-25s : %s\n" "Nginx 配置 (Nginx Conf)" "$NGINX_CONF_PATH"
+        printf "%-25s : %s\n" "MariaDB 服务" "mariadb"
+        printf "%-25s : %s\n" "PHP-FPM 服务" "$PHP_FPM_SERVICE"
+        echo "----------------------------------------------------------------------------------"
+        printf "%-25s : %s\n" "安全提醒 (Security Tip)" "安装完成后，建议运行 'sudo mysql_secure_installation' 来增强数据库安全。"
+        echo "=================================================================================="
+        echo "注意：此文件包含敏感信息（密码），请妥善保管！"
+    } > "$SUMMARY_FILE"
+
+    info "安装信息汇总已保存至文件: ${YELLOW}${SUMMARY_FILE}${NC}"
+    info "请务必妥善保管此文件，因为它包含您的敏感登录信息。"
 }
 
 
@@ -529,9 +626,9 @@ uninstall_wordpress() {
                     DB_USER=$(grep "DB_USER" "$selected_config" | cut -d \' -f 4)
                     NGINX_CONF=$(grep -lr "root.*$WP_PATH" /etc/nginx/conf.d/ /etc/nginx/sites-enabled/ | head -n 1)
                     if [ -n "$NGINX_CONF" ]; then
-                         DOMAIN=$(basename "$NGINX_CONF" .conf)
+                        DOMAIN=$(basename "$NGINX_CONF" .conf)
                     else
-                         DOMAIN=$(basename "$WP_PATH")
+                        DOMAIN=$(basename "$WP_PATH")
                     fi
                     break
                 elif [ "$selected_config" == "以上都不是/跳过 (None of above/Skip)" ]; then
@@ -619,7 +716,7 @@ main() {
             uninstall_wordpress
             ;;
         *)
-            echo "用法 (Usage): sudo bash $0 {install|uninstall}"
+            echo "用法 (Usage): sudo bash \$0 {install|uninstall}"
             exit 1
             ;;
     esac
